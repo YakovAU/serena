@@ -5,11 +5,11 @@
 
 * :rocket: Serena is a powerful **coding agent toolkit** capable of turning an LLM into a fully-featured agent that works **directly on your codebase**.
   Unlike most other tools, it is not tied to an LLM, framework or an interface, making it easy to use it in a variety of ways.
-* :wrench: Serena provides essential **semantic code retrieval and editing tools** that are akin to an IDE's capabilities, extracting code entities at the symbol level and exploiting relational structure. When combined with an existing coding agent, these tools greatly enhance (token) efficiency.
+* :wrench: Serena provides essential **semantic code retrieval and editing tools** that are akin to an IDE's capabilities, extracting code entities at the symbol level and exploiting relational structure. This includes advanced **dependency symbol search** for NuGet packages and external DLLs. When combined with an existing coding agent, these tools greatly enhance (token) efficiency.
 * :free: Serena is **free & open-source**, enhancing the capabilities of LLMs you already have access to free of charge.
 
 You can think of Serena as an IDE for a coding agent. With it, the agent no longer needs to read entire
-files, perform grep-like searches or string replacements to find and edit the right code. Instead, it can use code centered tools like `find_symbol`, `find_referencing_symbols` and `insert_after_symbol`.
+files, perform grep-like searches or string replacements to find and edit the right code. Instead, it can use code centered tools like `find_symbol`, `find_dependency_symbol`, `find_referencing_symbols` and `insert_after_symbol`.
 
 ### Users' Feedback
 
@@ -46,6 +46,17 @@ A demonstration of Serena implementing a small feature for itself (a better log 
 Note how Serena's tools enable Claude to find and edit the right symbols.
 
 https://github.com/user-attachments/assets/6eaa9aa1-610d-4723-a2d6-bf1e487ba753
+
+### New: Dependency Symbol Search
+
+Serena now includes advanced dependency symbol search capabilities that allow you to search for symbols in external dependencies:
+
+- **NuGet Packages**: Search for types and members in referenced NuGet packages
+- **External DLLs**: Search for symbols in external DLL dependencies
+- **Decompilation Support**: Lightweight decompilation for better symbol information
+- **Caching**: Performance-optimized caching of dependency symbols
+
+For detailed documentation, see [Dependency Symbol Search](docs/dependency_symbol_search.md).
 
 <p align="center">
   <em>Serena is under active development! See the latest updates, upcoming features, and lessons learned to stay up to date.</em>

@@ -13,6 +13,7 @@ from sensai.util.string import dict_string
 from serena.project import Project
 from serena.prompt_factory import PromptFactory
 from serena.symbol import LanguageServerSymbolRetriever
+from serena.dependency_symbol import DependencySymbolRetriever
 from serena.util.class_decorators import singleton
 from serena.util.inspection import iter_subclasses
 from solidlsp.ls_exceptions import SolidLSPException
@@ -51,6 +52,12 @@ class Component(ABC):
         language_server = self.agent.language_server
         assert language_server is not None
         return LanguageServerSymbolRetriever(language_server, agent=self.agent)
+
+    def create_dependency_symbol_retriever(self) -> DependencySymbolRetriever:
+        """
+        Create a dependency symbol retriever for searching symbols in external dependencies.
+        """
+        return DependencySymbolRetriever(self.project)
 
     @property
     def project(self) -> Project:

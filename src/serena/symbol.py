@@ -4,7 +4,7 @@ import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, Self, Union
+from typing import TYPE_CHECKING, Any, Optional, Self, Union
 
 from sensai.util.string import ToStringMixin
 
@@ -16,6 +16,7 @@ from .project import Project
 
 if TYPE_CHECKING:
     from .agent import SerenaAgent
+    from .dependency_symbol import DependencySymbolRetriever
 
 log = logging.getLogger(__name__)
 
@@ -449,6 +450,7 @@ class LanguageServerSymbolRetriever:
         """
         self._lang_server = lang_server
         self.agent = agent
+        self._dependency_retriever: Optional["DependencySymbolRetriever"] = None
 
     def set_language_server(self, lang_server: SolidLanguageServer) -> None:
         """
@@ -483,6 +485,86 @@ class LanguageServerSymbolRetriever:
                 )
             )
         return symbols
+
+    def find_with_dependencies(
+        self,
+        name_path: str,
+        include_body: bool = False,
+        include_kinds: Optional[Sequence[SymbolKind]] = None,
+        exclude_kinds: Optional[Sequence[SymbolKind]] = None,
+        substring_matching: bool = False,
+        within_relative_path: Optional[str] = None,
+        include_dependencies: bool = True,
+        include_nuget: bool = True,
+        include_external_dlls: bool = True,
+    ) -> list[LanguageServerSymbol]:
+        """
+        Find symbols including project dependencies (NuGet packages and external DLLs).
+        
+        :param name_path: The name path pattern to search for.
+        :param include_body: If True, include the symbol's source code.
+        :param include_kinds: Optional. List of LSP symbol kind integers to include.
+        :param exclude_kinds: Optional. List of LSP symbol kind integers to exclude.
+        :param substring_matching: If True, use substring matching for the symbol name.
+        :param within_relative_path: Optional. Restrict search to this file or directory.
+        :param include_dependencies: If True, include symbols from dependencies.
+        :param include_nuget: If True, include symbols from NuGet packages.
+        :param include_external_dlls: If True, include symbols from external DLLs.
+        :return: a list of symbols (with locations) matching the name.
+        """
+        # Get project symbols first
+        project_symbols = self.find_by_name(
+            name_path,
+            include_body=include_body,
+            include_kinds=include_kinds,
+            exclude_kinds=exclude_kinds,
+            substring_matching=substring_matching,
+            within_relative_path=within_relative_path,
+        )
+        
+        if not include_dependencies:
+            return project_symbols
+            
+        # Get dependency symbols if requested
+        dependency_symbols = self._get_dependency_symbols(
+            name_path,
+            include_body=include_body,
+            include_kinds=include_kinds,
+            exclude_kinds=exclude_kinds,
+            substring_matching=substring_matching,
+            include_nuget=include_nuget,
+            include_external_dlls=include_external_dlls,
+        )
+        
+        return project_symbols + dependency_symbols
+        
+    def _get_dependency_symbols(
+        self,
+        name_path: str,
+        include_body: bool = False,
+        include_kinds: Optional[Sequence[SymbolKind]] = None,
+        exclude_kinds: Optional[Sequence[SymbolKind]] = None,
+        substring_matching: bool = False,
+        include_nuget: bool = True,
+        include_external_dlls: bool = True,
+    ) -> list[LanguageServerSymbol]:
+        """Get symbols from project dependencies."""
+        if self.agent is None:
+            return []
+            
+        if self._dependency_retriever is None:
+            from serena.dependency_symbol import DependencySymbolRetriever
+            self._dependency_retriever = DependencySymbolRetriever(self.agent.get_active_project_or_raise())
+            
+        return self._dependency_retriever.find_dependency_symbols(
+            name_path,
+            include_body=include_body,
+            include_kinds=include_kinds,
+            exclude_kinds=exclude_kinds,
+            substring_matching=substring_matching,
+            include_nuget=include_nuget,
+            include_external_dlls=include_external_dlls,
+        )
 
     def get_document_symbols(self, relative_path: str) -> list[LanguageServerSymbol]:
         symbol_dicts, roots = self._lang_server.request_document_symbols(relative_path, include_body=False)
