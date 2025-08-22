@@ -49,6 +49,7 @@ config = DependencySymbolConfig(
 
 - **`external_search_paths`**: A list of paths to search for external DLLs. This is crucial for finding symbols in game assemblies or other non-standard locations.
 - **`decompiler_backend`**: The decompilation engine to use. `"ilspy"` is recommended for best results.
+- **`ilspycmd_path`**: The path to the `ilspycmd` executable. Defaults to `"ilspycmd"`, assuming it is in the system's PATH.
 - **`decompilation_enabled`**: Must be `True` to enable symbol extraction from DLLs.
 
 ## Usage for Game Modding

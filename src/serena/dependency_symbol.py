@@ -241,13 +241,13 @@ class DependencySymbolRetriever:
         """Returns an instance of the configured decompiler backend."""
         backend_name = self.config.decompiler_backend
         if backend_name == "ilspy":
-            return IlSpyDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+            return IlSpyDecompiler(ilspycmd_path=self.config.ilspycmd_path, depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
         elif backend_name == "cecil":
             return CecilDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
         elif backend_name == "auto":
             # Prefer ILSpy if available, otherwise fall back to Cecil.
             try:
-                return IlSpyDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+                return IlSpyDecompiler(ilspycmd_path=self.config.ilspycmd_path, depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
             except ImportError:
                 return CecilDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
         return None

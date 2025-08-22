@@ -75,14 +75,20 @@ class TestDependencySymbolRetriever(unittest.TestCase):
         self.assertEqual(len(dll_deps), 1)
         self.assertEqual(dll_deps[0].name, "NetPackageManager")
         
-    @patch('serena.dependency_decompiler.IlSpyDecompiler.enumerate_types')
-    def test_find_dependency_symbols_with_decompiler(self, mock_enumerate_types):
+    @patch('subprocess.run')
+    def test_find_dependency_symbols_with_decompiler(self, mock_subprocess_run):
         """Test finding symbols using the decompiler."""
-        mock_enumerate_types.return_value = ["NetPackageManager"]
+        # Mock the output of `ilspycmd -l`
+        mock_subprocess_run.return_value.stdout = "NetPackageManager\nAnother.Type"
+        mock_subprocess_run.return_value.returncode = 0
         
         symbols = self.retriever.find_dependency_symbols("NetPackageManager")
         self.assertEqual(len(symbols), 1)
         self.assertEqual(symbols[0].name, "NetPackageManager")
+
+        # Verify that `ilspycmd -l` was called
+        expected_cmd = [self.config.ilspycmd_path, "-l", "c,i,s,d,e", os.path.join(self.external_lib_path, "NetPackageManager.dll")]
+        mock_subprocess_run.assert_called_with(expected_cmd, capture_output=True, text=True, check=True)
 
     def test_config_validation(self):
         """Test configuration validation."""

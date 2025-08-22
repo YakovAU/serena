@@ -17,6 +17,7 @@ Note:
 from __future__ import annotations
 
 import logging
+import subprocess
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -52,23 +53,33 @@ class DecompilerBackend(ABC):
 class IlSpyDecompiler(DecompilerBackend):
     """
     ILSpy-based decompiler backend (production-ready integration would wrap the
-    .NET ICSharpCode.Decompiler library). This is a placeholder implementation
-    to enable a clean integration point in Python code.
+    .NET ICSharpCode.Decompiler library).
     """
 
-    def __init__(self, depth: int = 1, include_private_members: bool = False) -> None:
+    def __init__(self, ilspycmd_path: str, depth: int = 1, include_private_members: bool = False) -> None:
         super().__init__(depth=depth, include_private_members=include_private_members)
+        self.ilspycmd_path = ilspycmd_path
 
     def enumerate_types(self, assembly_path: str) -> List[str]:
-        log.info("IlSpyDecompiler: enumerate_types called for %s", assembly_path)
-        # Placeholder: real implementation would invoke ILSpy ICSharpCode.Decompiler
-        # to enumerate types. Returning empty list indicates no types discovered
-        # in this placeholder path.
-        return []
+        """Enumerates types using `ilspycmd -l`."""
+        cmd = [self.ilspycmd_path, "-l", "c,i,s,d,e", assembly_path]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            # The output of `ilspycmd -l` is a list of fully qualified type names, one per line.
+            return result.stdout.splitlines()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            log.error(f"Failed to enumerate types with ilspycmd: {e}")
+            return []
 
     def decompile_type_body(self, assembly_path: str, type_name: str) -> str:
-        # Placeholder decompilation body
-        return f"// Decompiled body of {type_name} from {assembly_path} [ILSpy placeholder]"
+        """Decompiles a single type using `ilspycmd -t`."""
+        cmd = [self.ilspycmd_path, "-t", type_name, assembly_path]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            return result.stdout
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            log.error(f"Failed to decompile type {type_name} with ilspycmd: {e}")
+            return f"// Failed to decompile {type_name}"
 
 
 class CecilDecompiler(DecompilerBackend):

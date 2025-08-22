@@ -50,6 +50,9 @@ class DependencySymbolConfig:
     decompiler_backend: str = "ilspy"
     """Decompiler backend to use: "ilspy", "cecil", or "auto" (prefers ilspy if available)."""
 
+    ilspycmd_path: str = "ilspycmd"
+    """Path to the ilspycmd executable."""
+
     # External dependencies search paths
     external_search_paths: List[str] = field(default_factory=list)
     """Additional locations to search for external DLLs (relative or absolute)."""
