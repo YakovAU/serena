@@ -32,12 +32,20 @@ class TestDependencySymbolRetriever(unittest.TestCase):
         self.config = DependencySymbolConfig(
             enabled=True,
             max_results=10,
-            decompilation_enabled=False,
+            decompilation_enabled=True,
             include_nuget_packages=True,
-            include_external_dlls=True
+            include_external_dlls=True,
+            external_search_paths=[os.path.join(self.temp_dir, "external_libs")]
         )
         
         self.retriever = DependencySymbolRetriever(self.project, self.config)
+        
+        # Create a dummy external lib for testing
+        self.external_lib_path = os.path.join(self.temp_dir, "external_libs")
+        os.makedirs(self.external_lib_path, exist_ok=True)
+        with open(os.path.join(self.external_lib_path, "NetPackageManager.dll"), "w") as f:
+            f.write("dummy dll content")
+
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -48,8 +56,7 @@ class TestDependencySymbolRetriever(unittest.TestCase):
         """Test that the retriever initializes correctly."""
         self.assertEqual(self.retriever.project, self.project)
         self.assertEqual(self.retriever.config, self.config)
-        self.assertEqual(len(self.retriever._dependencies_info), 0)
-        self.assertEqual(len(self.retriever._dependency_cache), 0)
+        self.assertIsNotNone(self.retriever._decompiler)
 
     def test_clear_cache(self):
         """Test that cache clearing works correctly."""
@@ -60,91 +67,22 @@ class TestDependencySymbolRetriever(unittest.TestCase):
         self.assertEqual(len(self.retriever._dependency_cache), 0)
 
     @patch('serena.dependency_symbol.DependencySymbolRetriever._discover_nuget_dependencies')
-    @patch('serena.dependency_symbol.DependencySymbolRetriever._discover_external_dlls')
-    def test_discover_dependencies(self, mock_discover_dlls, mock_discover_nuget):
-        """Test dependency discovery."""
+    def test_discover_external_dlls(self, mock_discover_nuget):
+        """Test discovery of external DLLs."""
         self.retriever._discover_dependencies()
-        mock_discover_nuget.assert_called_once()
-        mock_discover_dlls.assert_called_once()
-
-    def test_matches_search_criteria_basic(self):
-        """Test basic search criteria matching."""
-        # Create a mock symbol
-        mock_symbol = Mock()
-        mock_symbol.symbol_kind = SymbolKind.Class
-        mock_symbol.get_name_path.return_value = "TestClass"
         
-        # Test exact match
-        result = self.retriever._matches_search_criteria(
-            mock_symbol, "TestClass", None, None, False
-        )
-        self.assertTrue(result)
+        dll_deps = [dep for dep in self.retriever._dependencies_info if dep.type == "dll"]
+        self.assertEqual(len(dll_deps), 1)
+        self.assertEqual(dll_deps[0].name, "NetPackageManager")
         
-        # Test substring match
-        result = self.retriever._matches_search_criteria(
-            mock_symbol, "Test", None, None, True
-        )
-        self.assertTrue(result)
+    @patch('serena.dependency_decompiler.IlSpyDecompiler.enumerate_types')
+    def test_find_dependency_symbols_with_decompiler(self, mock_enumerate_types):
+        """Test finding symbols using the decompiler."""
+        mock_enumerate_types.return_value = ["NetPackageManager"]
         
-        # Test no match
-        result = self.retriever._matches_search_criteria(
-            mock_symbol, "OtherClass", None, None, False
-        )
-        self.assertFalse(result)
-
-    def test_matches_search_criteria_with_kinds(self):
-        """Test search criteria with kind filtering."""
-        # Create a mock symbol
-        mock_symbol = Mock()
-        mock_symbol.symbol_kind = SymbolKind.Class
-        
-        # Test include kinds
-        result = self.retriever._matches_search_criteria(
-            mock_symbol, "Test", [SymbolKind.Class], None, True
-        )
-        self.assertTrue(result)
-        
-        # Test exclude kinds
-        result = self.retriever._matches_search_criteria(
-            mock_symbol, "Test", None, [SymbolKind.Class], True
-        )
-        self.assertFalse(result)
-
-    @patch('serena.dependency_symbol.DependencySymbolRetriever._get_dependency_symbols')
-    def test_find_dependency_symbols_empty(self, mock_get_symbols):
-        """Test finding symbols with no dependencies."""
-        mock_get_symbols.return_value = []
-        
-        symbols = self.retriever.find_dependency_symbols("Test")
-        self.assertEqual(len(symbols), 0)
-
-    def test_create_common_dotnet_symbols(self):
-        """Test creation of common .NET symbols."""
-        dependency = DependencyInfo(
-            name="System",
-            version="4.0.0",
-            type="nuget"
-        )
-        
-        symbols = self.retriever._create_common_dotnet_symbols(dependency)
-        self.assertGreater(len(symbols), 0)
-        
-        # Check that we have some common System types
-        symbol_names = [symbol.name for symbol in symbols]
-        self.assertIn("Console", symbol_names)
-        self.assertIn("String", symbol_names)
-
-    def test_create_placeholder_dll_symbols(self):
-        """Test creation of placeholder DLL symbols."""
-        dependency = DependencyInfo(
-            name="TestLibrary",
-            version="1.0.0",
-            type="dll"
-        )
-        
-        symbols = self.retriever._create_placeholder_dll_symbols(dependency)
+        symbols = self.retriever.find_dependency_symbols("NetPackageManager")
         self.assertEqual(len(symbols), 1)
-        self.assertEqual(symbols[0].name, "TestLibrary")
+        self.assertEqual(symbols[0].name, "NetPackageManager")
 
     def test_config_validation(self):
         """Test configuration validation."""

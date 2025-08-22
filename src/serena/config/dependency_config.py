@@ -2,8 +2,8 @@
 Configuration for dependency symbol search functionality.
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 
 @dataclass
@@ -46,6 +46,14 @@ class DependencySymbolConfig:
     include_system_assemblies: bool = False
     """Whether to include symbols from system assemblies (e.g., System.*)."""
     
+    # Decompiler backend selection
+    decompiler_backend: str = "ilspy"
+    """Decompiler backend to use: "ilspy", "cecil", or "auto" (prefers ilspy if available)."""
+
+    # External dependencies search paths
+    external_search_paths: List[str] = field(default_factory=list)
+    """Additional locations to search for external DLLs (relative or absolute)."""
+
     # Filter settings
     min_confidence_threshold: float = 0.7
     """Minimum confidence threshold for symbol matching (0.0 to 1.0)."""

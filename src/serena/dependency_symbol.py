@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from serena.project import Project
 from serena.config.dependency_config import DependencySymbolConfig, DEFAULT_DEPENDENCY_CONFIG
 from serena.symbol import LanguageServerSymbol, LanguageServerSymbolLocation
-# Remove unused import
+from serena.dependency_decompiler import DecompilerBackend, IlSpyDecompiler, CecilDecompiler
 from solidlsp.ls_types import SymbolKind
 
 log = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ class DependencySymbolRetriever:
         self.config = config or DEFAULT_DEPENDENCY_CONFIG
         self._dependencies_info: List[DependencyInfo] = []
         self._dependency_cache: Dict[str, List[LanguageServerSymbol]] = {}
+        self._decompiler = self._get_decompiler()
         
     def clear_cache(self) -> None:
         """Clear the cached dependency symbols."""
@@ -72,8 +73,8 @@ class DependencySymbolRetriever:
         self,
         name_path: str,
         include_body: bool = False,
-        include_kinds: Optional[List[SymbolKind]] = None,
-        exclude_kinds: Optional[List[SymbolKind]] = None,
+        include_kinds: Optional[Sequence[SymbolKind]] = None,
+        exclude_kinds: Optional[Sequence[SymbolKind]] = None,
         substring_matching: bool = False,
         include_nuget: bool = True,
         include_external_dlls: bool = True,
@@ -160,36 +161,31 @@ class DependencySymbolRetriever:
                 log.warning(f"Failed to parse project file {csproj_file}: {e}")
                 
     def _discover_external_dlls(self) -> None:
-        """Discover external DLL dependencies from bin directories."""
-        project_root = self.project.project_root
+        """Discover external DLL dependencies from configured search paths."""
+        search_paths = [self.project.project_root] + self.config.external_search_paths
         
-        # Look for DLLs in bin directories
-        bin_dirs = []
-        for root, dirs, _ in os.walk(project_root):
-            if 'bin' in dirs:
-                bin_dirs.append(os.path.join(root, 'bin'))
-                
-        for bin_dir in bin_dirs:
-            try:
-                for root, _, files in os.walk(bin_dir):
-                    for file in files:
-                        if file.endswith('.dll') and not file.startswith('System.'):
-                            # Skip system assemblies and focus on external ones
-                            dll_path = os.path.join(root, file)
-                            assembly_name = os.path.splitext(file)[0]
-                            
-                            self._dependencies_info.append(
-                                DependencyInfo(
-                                    name=assembly_name,
-                                    version="unknown",
-                                    type="dll",
-                                    path=dll_path,
-                                    assembly_name=assembly_name
-                                )
+        for path in search_paths:
+            if not os.path.isdir(path):
+                continue
+            for root, _, files in os.walk(path):
+                for file in files:
+                    if file.endswith('.dll'):
+                        # Optionally skip system assemblies
+                        if not self.config.include_system_assemblies and file.startswith('System.'):
+                            continue
+
+                        dll_path = os.path.join(root, file)
+                        assembly_name = os.path.splitext(file)[0]
+                        
+                        self._dependencies_info.append(
+                            DependencyInfo(
+                                name=assembly_name,
+                                version="unknown",
+                                type="dll",
+                                path=dll_path,
+                                assembly_name=assembly_name
                             )
-                            
-            except OSError as e:
-                log.warning(f"Failed to scan bin directory {bin_dir}: {e}")
+                        )
                 
     def _get_dependency_symbols(self, dependency: DependencyInfo, include_body: bool = False) -> List[LanguageServerSymbol]:
         """
@@ -216,7 +212,6 @@ class DependencySymbolRetriever:
         
     def _get_nuget_symbols(self, dependency: DependencyInfo, include_body: bool) -> List[LanguageServerSymbol]:
         """Get symbols from a NuGet package."""
-        # For NuGet packages, we'll use metadata-based symbol extraction
         # This is a placeholder - actual implementation would use package metadata
         # or decompilation if the package is available locally
         
@@ -225,31 +220,38 @@ class DependencySymbolRetriever:
         return common_symbols
         
     def _get_dll_symbols(self, dependency: DependencyInfo, include_body: bool) -> List[LanguageServerSymbol]:
-        """Get symbols from an external DLL using decompilation."""
-        if not dependency.path or not os.path.exists(dependency.path):
+        """Get symbols from an external DLL using the configured decompiler."""
+        if not dependency.path or not os.path.exists(dependency.path) or not self._decompiler:
             return []
-            
-        try:
-            # Use Mono.Cecil for lightweight metadata extraction
-            symbols = self._extract_dll_symbols_with_mono_cecil(dependency.path, include_body)
-            return symbols
-        except ImportError:
-            log.warning("Mono.Cecil not available for DLL symbol extraction")
+
+        if not self.config.decompilation_enabled:
             return self._create_placeholder_dll_symbols(dependency)
-            
-    def _extract_dll_symbols_with_mono_cecil(self, dll_path: str, include_body: bool) -> List[LanguageServerSymbol]:
-        """Extract symbols from DLL using Mono.Cecil."""
-        # This would be implemented using Mono.Cecil to read assembly metadata
-        # For now, return placeholder symbols
-        return self._create_placeholder_dll_symbols(
-            DependencyInfo(
-                name=os.path.basename(dll_path).replace('.dll', ''),
-                version="unknown",
-                type="dll",
-                path=dll_path
-            )
-        )
+
+        # Use the decompiler to get the symbols
+        type_names = self._decompiler.enumerate_types(dependency.path)
+        symbols = []
+        for type_name in type_names:
+            body = self._decompiler.decompile_type_body(dependency.path, type_name) if include_body else ""
+            # This part needs to be improved to create a proper symbol from the decompiled code
+            # For now, we'll just create a placeholder
+            symbols.append(self._create_placeholder_dll_symbols(dependency)[0])
+        return symbols
         
+    def _get_decompiler(self) -> Optional[DecompilerBackend]:
+        """Returns an instance of the configured decompiler backend."""
+        backend_name = self.config.decompiler_backend
+        if backend_name == "ilspy":
+            return IlSpyDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+        elif backend_name == "cecil":
+            return CecilDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+        elif backend_name == "auto":
+            # Prefer ILSpy if available, otherwise fall back to Cecil.
+            try:
+                return IlSpyDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+            except ImportError:
+                return CecilDecompiler(depth=self.config.decompilation_depth, include_private_members=self.config.include_private_members)
+        return None
+
     def _create_common_dotnet_symbols(self, dependency: DependencyInfo) -> List[LanguageServerSymbol]:
         """Create placeholder symbols for common .NET types and methods."""
         symbols = []
